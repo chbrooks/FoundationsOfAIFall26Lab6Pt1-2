@@ -1,0 +1,474 @@
+<!DOCTYPE html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Rescue Drone MDP</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: settings, the search area and battery selector, then two tabs (planning with the model: VI and PI side by side; Q-learning without the model), then flight simulation. */
+:root{
+  --bg:#f4f5f2; --surface:#ffffff; --fg:#1d2420; --muted:#5b655f; --line:#d6dbd5;
+  --accent:#2e6b8f; --accent-soft:#dde9f0;
+  --good:#2f8a64; --bad:#c2473a; --cliff:#6b6157; --gust:#b9a77a; --cell:#eef0ec; --learn:#7a55a8;
+  --display:"Newsreader",Georgia,"Times New Roman",serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#121614; --surface:#1a201d; --fg:#e4e9e5; --muted:#98a39c; --line:#2d3631;
+  --accent:#78b3d6; --accent-soft:#1f3442;
+  --good:#4fb187; --bad:#e0705f; --cliff:#8a7f72; --gust:#8d7f55; --cell:#222a26; --learn:#b49ae0; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121614; --surface:#1a201d; --fg:#e4e9e5; --muted:#98a39c; --line:#2d3631;
+  --accent:#78b3d6; --accent-soft:#1f3442;
+  --good:#4fb187; --bad:#e0705f; --cliff:#8a7f72; --gust:#8d7f55; --cell:#222a26; --learn:#b49ae0; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.55}
+.wrap{max-width:1100px;margin:0 auto;padding-block:32px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:22px}
+h1{font-family:var(--display);font-weight:600;font-size:2rem;line-height:1.15;margin:0;text-wrap:balance}
+h2{font-family:var(--display);font-weight:500;font-size:1.3rem;margin:0;text-wrap:balance}
+h3{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 6px}
+p{margin:0}
+.lede{color:var(--muted);max-width:72ch;margin-top:6px}
+.small{font-size:13px;color:var(--muted)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0;display:flex;flex-direction:column;gap:12px}
+.controls{display:flex;flex-wrap:wrap;gap:18px 26px;align-items:flex-end}
+.ctl{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.ctl b{color:var(--fg);font-family:var(--mono);font-weight:500}
+.ctl input[type=range]{width:200px;accent-color:var(--accent)}
+.ctl input[type=number]{font-family:var(--mono);font-size:13px;width:84px;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:4px 6px}
+.chk{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--fg)}
+.chk input{accent-color:var(--accent)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.btn{font:inherit;font-size:13px;background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:5px 11px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.btn[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn:focus-visible,input:focus-visible,select:focus-visible,.tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+select{font:inherit;font-size:13px;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:4px 6px}
+.legend{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:13px;color:var(--muted)}
+.sw{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.batt{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:-8px;overflow-x:auto}
+.tab{font:inherit;font-size:15px;font-weight:500;background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:8px 14px;color:var(--muted);cursor:pointer;white-space:nowrap}
+.tab:hover{color:var(--fg)}
+.tab[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--accent)}
+.tabpanel{display:flex;flex-direction:column;gap:16px}
+.algos{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:880px){.algos{grid-template-columns:1fr}}
+.qgrid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:880px){.qgrid{grid-template-columns:1fr}}
+.map{width:100%;height:auto;display:block;max-width:520px}
+.mapwrap{overflow-x:auto}
+.bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.stat{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--muted)}
+.stat b{font-family:var(--mono);font-weight:500;color:var(--fg)}
+.msg{font-size:13px;padding:8px 10px;border-radius:6px;background:var(--accent-soft);color:var(--fg)}
+.cv{font-family:var(--mono);font-size:10.5px;fill:var(--fg)}
+.qv{font-family:var(--mono);font-size:8.5px;fill:var(--fg)}
+.lbl{font-family:var(--body);font-size:11px;font-weight:600;fill:var(--fg)}
+.arrow{fill:var(--fg)}
+.chart{width:100%;height:auto;display:block}
+.ax{stroke:var(--line);stroke-width:1}
+.axt{font-family:var(--mono);font-size:10px;fill:var(--muted)}
+.upd{display:flex;flex-direction:column;gap:6px;font-size:13.5px}
+.upd .k{display:inline-block;min-width:56px;color:var(--muted)}
+.eq{font-family:var(--mono);font-size:12.5px;background:var(--bg);border-radius:6px;padding:6px 8px;overflow-x:auto;white-space:nowrap}
+.try{margin:0;padding-left:18px;font-size:13.5px;display:flex;flex-direction:column;gap:4px}
+.sims{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:780px){.sims{grid-template-columns:1fr}}
+.kp{border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+.kp .v{font-family:var(--mono);font-size:1.2rem;font-weight:500}
+.kpis{display:flex;flex-direction:column;gap:10px}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Rescue Drone MDP</h1>
+    <p class="lede">A drone launches from base to reach a stranded hiker. Every move uses battery, gusty canyon cells use double, and wind sometimes pushes the drone sideways. Landing on a charging pad refills the battery. If the battery runs out anywhere else, the drone crashes. The state is position <em>and</em> battery, so the same square can call for different moves.</p>
+    <p class="lede">The first tab plans with a full model of the wind and battery. The second takes the model away: the drone has to learn from its own flights with Q-learning.</p>
+  </header>
+
+  <section class="panel" aria-label="Settings">
+    <div class="controls">
+      <label class="ctl" for="gamma">Discount factor γ <b id="gv">0.95</b><input id="gamma" type="range" min="0.5" max="0.99" step="0.01" value="0.95"></label>
+      <div class="ctl">Try<div class="chips"><button class="btn" data-g="0.6">γ 0.6</button><button class="btn" data-g="0.8">γ 0.8</button><button class="btn" data-g="0.95">γ 0.95</button><button class="btn" data-g="0.99">γ 0.99</button></div></div>
+      <label class="ctl" for="wind">Wind slip chance <b id="wv">0.20</b><input id="wind" type="range" min="0" max="0.5" step="0.05" value="0.2"></label>
+      <label class="ctl" for="rF">Reward for finding hiker<input id="rF" type="number" step="1" value="10"></label>
+      <label class="ctl" for="rC">Reward for crashing<input id="rC" type="number" step="1" value="-20"></label>
+      <label class="ctl" for="rS">Reward per move<input id="rS" type="number" step="0.05" value="-0.2"></label>
+      <button class="btn" id="resetAll">Restore defaults</button>
+    </div>
+    <p class="small">Wind pushes the drone 90° left or right of its intended direction, each with half the slip chance. Flying into a cliff or the edge of the map leaves it in place but still uses battery. Changing any setting restarts every algorithm on both tabs.</p>
+  </section>
+
+  <section class="panel" aria-label="Map key and battery level">
+    <div class="legend">
+      <span><span class="sw" style="background:var(--accent)"></span>B base, C charging pad (refill to 7)</span>
+      <span><span class="sw" style="background:var(--good)"></span>H hiker</span>
+      <span><span class="sw" style="background:var(--cliff)"></span>Cliff</span>
+      <span><span class="sw" style="background:var(--gust)"></span>Gusty canyon (2 battery)</span>
+      <span>Cell color: value (green good, red bad) · arrow: best move</span>
+    </div>
+    <div class="batt"><span>Show the maps for battery level</span><div class="chips" id="battChips"></div><span>(chargers always show a full battery)</span></div>
+  </section>
+
+  <div class="tabs" role="tablist" aria-label="Solution method">
+    <button class="tab" role="tab" id="tab-plan" aria-controls="panel-plan" aria-selected="true">Planning with the model</button>
+    <button class="tab" role="tab" id="tab-q" aria-controls="panel-q" aria-selected="false">Q-learning (no model)</button>
+  </div>
+
+  <div class="tabpanel" role="tabpanel" id="panel-plan" aria-labelledby="tab-plan">
+  <div class="algos">
+    <section class="panel" aria-label="Value iteration">
+      <h2>Value iteration</h2>
+      <p class="small">Each sweep updates all <span class="nS"></span> states with the Bellman update. Watch value spread outward from the hiker one cell per sweep, and the danger of crashing spread from low-battery states.</p>
+      <div class="bar">
+        <button class="btn primary" id="viPlay">Play</button>
+        <button class="btn" id="viStep">Sweep</button>
+        <button class="btn" id="viRun">Run to convergence</button>
+        <button class="btn" id="viReset">Reset</button>
+      </div>
+      <div class="stat" id="viStat"></div>
+      <div class="mapwrap"><svg class="map" id="viMap" viewBox="0 0 420 300" role="img" aria-label="Value iteration values and greedy moves on the map"></svg></div>
+      <div><h3>Largest value change per sweep (log scale)</h3><svg class="chart" id="viChart" viewBox="0 0 460 120" role="img" aria-label="Largest change per sweep"></svg></div>
+    </section>
+
+    <section class="panel" aria-label="Policy iteration">
+      <h2>Policy iteration</h2>
+      <p class="small">Evaluate solves <span class="nS"></span> linear equations for the exact value of the current policy. Improve switches every state to its best action. Outlined cells switched in the last improvement.</p>
+      <div class="bar">
+        <label class="small" for="piInit">Start from</label>
+        <select id="piInit"><option value="straight">Fly straight at the hiker</option><option value="north">Always fly north</option></select>
+        <button class="btn primary" id="piStep">Evaluate</button>
+        <button class="btn" id="piRun">Run to the end</button>
+        <button class="btn" id="piReset">Reset</button>
+      </div>
+      <div class="stat" id="piStat"></div>
+      <div class="msg" id="piMsg"></div>
+      <div class="mapwrap"><svg class="map" id="piMap" viewBox="0 0 420 300" role="img" aria-label="Policy iteration values and moves on the map"></svg></div>
+    </section>
+  </div>
+  </div>
+
+  <div class="tabpanel" role="tabpanel" id="panel-q" aria-labelledby="tab-q" hidden>
+    <section class="panel" aria-label="Q-learning settings">
+      <h2>Q-learning</h2>
+      <p class="small">Here the drone does not know the wind chances or where a move leads. It only sees what happens on flights it actually makes. After every move it nudges one number, Q(state, move), toward what it just saw: <span style="font-family:var(--mono);color:var(--fg)">Q ← Q + α [ r + γ · max Q(next) − Q ]</span>. With enough flights and enough exploring, these numbers approach the values the Planning tab computes from the model. A flight ends at the hiker, at a crash, or after 60 moves.</p>
+      <div class="controls">
+        <label class="ctl" for="qa">Learning rate α <b id="qav">0.10</b><input id="qa" type="range" min="0.01" max="1" step="0.01" value="0.1"></label>
+        <label class="ctl" for="qe">Exploration ε <b id="qev">0.20</b><input id="qe" type="range" min="0" max="1" step="0.01" value="0.2"></label>
+        <label class="chk"><input type="checkbox" id="qdecay"> Halve ε every 1,000 flights</label>
+        <label class="ctl" for="qstart">Each flight starts<select id="qstart"><option value="base">At base</option><option value="random">In a random state</option></select></label>
+        <label class="ctl" for="qinit">Starting Q-values<select id="qinit"><option value="0">All 0</option><option value="10">Optimistic (all 10)</option></select></label>
+        <label class="ctl" for="qseed">Random seed<input id="qseed" type="number" step="1" min="1" value="1"></label>
+      </div>
+      <p class="small">α, ε and the start rule change on the fly, so you can raise ε partway through training. Changing the starting Q-values or the seed starts learning over. The same seed always gives the same flights.</p>
+      <div class="bar">
+        <button class="btn" id="qStepBtn">Step</button>
+        <button class="btn primary" id="qEpBtn">Fly one flight</button>
+        <button class="btn" id="q100">+100 flights</button>
+        <button class="btn" id="q1000">+1,000 flights</button>
+        <button class="btn" id="qResetBtn">Reset</button>
+      </div>
+      <div class="stat" id="qStat"></div>
+    </section>
+
+    <div class="qgrid">
+      <section class="panel" aria-label="Learned values on the map">
+        <div class="bar"><span class="small">Show</span><div class="chips" id="qViews"><button class="btn" data-v="q" aria-pressed="true">Q-values</button><button class="btn" data-v="visits" aria-pressed="false">Visits</button><button class="btn" data-v="cmp" aria-pressed="false">Compare with optimal</button></div></div>
+        <p class="small" id="qViewNote"></p>
+        <div class="mapwrap"><svg class="map" id="qMap" viewBox="0 0 420 300" role="img" aria-label="Learned Q-values on the map"></svg></div>
+        <p class="small">Purple line: the current or most recent flight. Stepping switches the map to the drone's battery level.</p>
+      </section>
+
+      <section class="panel" aria-label="Latest update and learning curves">
+        <div><h3>Latest update</h3><div class="upd" id="qUpd"></div></div>
+        <div><h3>Value of the learned policy, starting at base</h3><svg class="chart" id="qChartV" viewBox="0 0 460 130" role="img" aria-label="Value of the greedy learned policy compared with optimal"></svg>
+          <p class="small">Exact value of always taking the highest-Q move, checked with the model the drone never sees. Dashed: the optimal value from the Planning tab.</p></div>
+        <div><h3>Learning progress</h3><svg class="chart" id="qChartP" viewBox="0 0 460 130" role="img" aria-label="Share of optimal moves and of successful training flights"></svg>
+          <div class="legend"><span><span class="sw" style="background:var(--good)"></span>States reachable from base where the learned move is optimal</span><span><span class="sw" style="background:var(--learn)"></span>Training flights that found the hiker (last 100)</span></div></div>
+      </section>
+    </div>
+
+    <section class="panel" aria-label="Things to try">
+      <h2>Things to try</h2>
+      <ul class="try">
+        <li><b>No exploring.</b> Set ε to 0, reset, and add 3,000 flights. The drone keeps repeating whatever worked first, and the learned policy stays well below optimal. Reset with ε at 0.2 and do the same: it gets close to optimal. (Early on, both curves bounce around; compare them after a few thousand flights.)</li>
+        <li><b>Where it never goes.</b> With flights starting at base, open the Visits view at battery 7. Most of the map is grey: the drone can't be far from base with a full battery unless it recharged. Switch to random starts and compare.</li>
+        <li><b>Learning rate and wind.</b> Try α = 0.5 with the default wind. Each gust swings the Q-values, so the policy keeps changing. Then try it with wind slip 0.</li>
+        <li><b>Learning vs. doing.</b> In the progress chart, training flights still crash sometimes even after the learned policy is good. That is the cost of exploring with ε.</li>
+      </ul>
+    </section>
+  </div>
+
+  <section class="panel" aria-label="Flight simulation">
+    <h2>Fly a mission</h2>
+    <p class="small">The drones launch from base with a full battery and get the same gusts. One follows the optimal policy for the current settings, one flies straight at the hiker and ignores its battery, and once you have trained on the Q-learning tab, a third follows the policy it learned.</p>
+    <div class="bar"><button class="btn primary" id="simGo">Fly again</button></div>
+    <div class="sims">
+      <div class="mapwrap"><svg class="map" id="simMap" viewBox="0 0 420 300" role="img" aria-label="Flight paths of the drones"></svg>
+        <div class="legend" style="margin-top:8px"><span><span class="sw" style="background:var(--accent)"></span>Optimal policy</span><span><span class="sw" style="background:var(--bad)"></span>Straight at the hiker</span><span><span class="sw" style="background:var(--learn)"></span>Learned by Q-learning</span></div></div>
+      <div class="kpis" id="simKpi"></div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+const MAP=["...#..H","...#...","...C...",".#...~.","B....~."];
+const W=7,H=5,BM=7,CS=60,DIRS=[[0,-1],[1,0],[0,1],[-1,0]],DN=['north','east','south','west'];
+const D={g:.95,w:.2,rF:10,rC:-20,rS:-.2};let cfg={...D};
+const ch=(x,y)=>MAP[y][x];
+// states
+const KEYS=[],IDX={};
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const c=ch(x,y);if(c==='#'||c==='H')continue;
+ if(c==='B'||c==='C'){IDX[x+','+y+','+BM]=KEYS.length;KEYS.push([x,y,BM]);}
+ else for(let b=1;b<=BM;b++){IDX[x+','+y+','+b]=KEYS.length;KEYS.push([x,y,b]);}}
+const N=KEYS.length;document.querySelectorAll('.nS').forEach(e=>e.textContent=N);
+const sid=(x,y,b)=>{const c=ch(x,y);return IDX[x+','+y+','+((c==='B'||c==='C')?BM:b)];};
+const BASE=sid(0,4,BM);
+let OUT,REACH;// OUT[s][a] = [[p, next(-1 found, -2 crash), r, landing x, landing y], ...]
+function move(x,y,d){const nx=x+d[0],ny=y+d[1];return (nx>=0&&nx<W&&ny>=0&&ny<H&&ch(nx,ny)!=='#')?[nx,ny]:[x,y];}
+function build(){OUT=KEYS.map(([x,y,b])=>[0,1,2,3].map(a=>{const res=[];
+ [[DIRS[a],1-cfg.w],[DIRS[(a+1)%4],cfg.w/2],[DIRS[(a+3)%4],cfg.w/2]].forEach(([d,p])=>{if(p<=0)return;const[nx,ny]=move(x,y,d),c=ch(nx,ny),nb=b-(c==='~'?2:1);
+  if(c==='H')res.push([p,-1,cfg.rS+cfg.rF,nx,ny]);else if(c==='B'||c==='C')res.push([p,sid(nx,ny,BM),cfg.rS,nx,ny]);else if(nb<=0)res.push([p,-2,cfg.rS+cfg.rC,nx,ny]);else res.push([p,sid(nx,ny,nb),cfg.rS,nx,ny]);});
+ return res;}));
+ // states reachable from base under some sequence of moves
+ const seen=new Uint8Array(N),q=[BASE];seen[BASE]=1;while(q.length){const s=q.pop();for(let a=0;a<4;a++)for(const o of OUT[s][a]){const j=o[1];if(j>=0&&!seen[j]){seen[j]=1;q.push(j);}}}
+ REACH=[];for(let s=0;s<N;s++)if(seen[s])REACH.push(s);}
+const qsa=(V,s,a)=>OUT[s][a].reduce((t,[p,j,r])=>t+p*(r+(j>=0?cfg.g*V[j]:0)),0);
+const argmaxS=(V,s,pref)=>{let best=pref??0,bv=qsa(V,s,best);for(let a=0;a<4;a++){const v=qsa(V,s,a);if(v>bv+1e-9){bv=v;best=a;}}return best;};
+const greedy=V=>KEYS.map((_,s)=>argmaxS(V,s));
+function evalPolicy(pi){// solve (I - g P) V = r by Gaussian elimination
+ const M=new Array(N);for(let s=0;s<N;s++){const row=new Float64Array(N+1);row[s]=1;for(const[p,j,r]of OUT[s][pi[s]]){row[N]+=p*r;if(j>=0)row[j]-=cfg.g*p;}M[s]=row;}
+ for(let c=0;c<N;c++){let pv=c;for(let r=c+1;r<N;r++)if(Math.abs(M[r][c])>Math.abs(M[pv][c]))pv=r;const t=M[c];M[c]=M[pv];M[pv]=t;const mc=M[c],d=mc[c];
+  for(let r=0;r<N;r++){if(r===c)continue;const mr=M[r],f=mr[c]/d;if(f===0)continue;for(let k=c;k<=N;k++)mr[k]-=f*mc[k];}}
+ return M.map((row,i)=>row[N]/row[i]);}
+function solve(){let pi=KEYS.map(()=>1);for(let i=0;i<100;i++){const V=evalPolicy(pi);const np=KEYS.map((_,s)=>argmaxS(V,s,pi[s]));if(np.every((a,s)=>a===pi[s]))return{pi,V};pi=np;}return{pi,V:evalPolicy(pi)};}
+
+// ---------- map rendering ----------
+let showB=4;
+function heat(v){if(!isFinite(v))return 'var(--cell)';const pos=v>=0,sc=pos?Math.max(1,cfg.rF):Math.max(1,-cfg.rC),k=Math.round(Math.min(1,Math.abs(v)/sc)*72);return `color-mix(in srgb, var(${pos?'--good':'--bad'}) ${k}%, var(--surface))`;}
+function arrowAt(cx,cy,a){const rot=[0,90,180,270][a];return `<g transform="translate(${cx},${cy+6}) rotate(${rot})"><path class="arrow" d="M0 -11 L6 -3 L2 -3 L2 7 L-2 7 L-2 -3 L-6 -3 Z" opacity=".85"/></g>`;}
+function drawMap(svg,V,pi,opt={}){let g='';
+ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const c=ch(x,y),X=x*CS,Y=y*CS;
+  if(c==='#'){g+=`<rect x="${X+1}" y="${Y+1}" width="${CS-2}" height="${CS-2}" rx="5" fill="var(--cliff)"/>`;continue;}
+  if(c==='H'){g+=`<rect x="${X+1}" y="${Y+1}" width="${CS-2}" height="${CS-2}" rx="5" fill="var(--good)"/><text class="lbl" x="${X+CS/2}" y="${Y+CS/2}" text-anchor="middle" dominant-baseline="central" style="fill:var(--surface)">H</text>`;continue;}
+  const s=sid(x,y,showB);const v=V?V[s]:NaN;
+  g+=`<rect x="${X+1}" y="${Y+1}" width="${CS-2}" height="${CS-2}" rx="5" fill="${V?heat(v):'var(--cell)'}"/>`;
+  if(c==='~')g+=`<rect x="${X+1}" y="${Y+1}" width="${CS-2}" height="${CS-2}" rx="5" fill="none" stroke="var(--gust)" stroke-width="3" stroke-dasharray="5 4"/>`;
+  if(c==='B'||c==='C')g+=`<rect x="${X+1}" y="${Y+1}" width="${CS-2}" height="${CS-2}" rx="5" fill="none" stroke="var(--accent)" stroke-width="3"/><text class="lbl" x="${X+7}" y="${Y+12}" style="fill:var(--accent)">${c}</text>`;
+  if(opt.changed&&opt.changed[s])g+=`<rect x="${X+3}" y="${Y+3}" width="${CS-6}" height="${CS-6}" rx="4" fill="none" stroke="var(--fg)" stroke-width="2"/>`;
+  if(pi&&!opt.noArrows)g+=arrowAt(X+CS/2,Y+CS/2-10,pi[s]);
+  if(V)g+=`<text class="cv" x="${X+CS/2}" y="${Y+CS-11}" text-anchor="middle">${isFinite(v)?(Math.abs(v)<0.05?'0.0':v.toFixed(1)):'?'}</text>`;}
+ if(opt.extra)g+=opt.extra;
+ svg.innerHTML=g;}
+
+// ---------- value iteration ----------
+let vi,timer=null;
+function viReset(){stop();vi={V:new Float64Array(N),k:0,deltas:[],pis:[greedy(new Float64Array(N))],done:false,stable:0};renderVI();}
+function viSweep(){if(vi.done)return;const V=new Float64Array(N);let d=0;for(let s=0;s<N;s++){let m=-Infinity;for(let a=0;a<4;a++){const q=qsa(vi.V,s,a);if(q>m)m=q;}V[s]=m;d=Math.max(d,Math.abs(m-vi.V[s]));}
+ vi.V=V;vi.k++;vi.deltas.push(d);const pi=greedy(V),prev=vi.pis[vi.pis.length-1];if(!pi.every((a,s)=>a===prev[s]))vi.stable=vi.k;vi.pis.push(pi);if(d<1e-6||vi.k>=5000){vi.done=true;stop();}}
+function renderVI(){const pi=vi.pis[vi.pis.length-1];drawMap($('viMap'),vi.V,vi.k?pi:null);
+ const d=vi.deltas.length?vi.deltas[vi.deltas.length-1]:null;
+ $('viStat').innerHTML=`<span>Sweep <b>${vi.k}</b></span><span>Largest change <b>${d===null?'—':d<1e-3?d.toExponential(1):d.toFixed(3)}</b></span><span>Policy unchanged since sweep <b>${vi.stable}</b></span>${vi.done?'<span><b>Converged</b></span>':''}`;
+ const Wc=460,Hc=120,L=40,Rt=8,Tp=8,B=20,K=Math.max(vi.k,10),ds=vi.deltas.filter(x=>x>0);let g=`<line class="ax" x1="${L}" y1="${Hc-B}" x2="${Wc-Rt}" y2="${Hc-B}"/><line class="ax" x1="${L}" y1="${Tp}" x2="${L}" y2="${Hc-B}"/>`;
+ if(ds.length){const lo=Math.floor(Math.log10(Math.min(1e-6,...ds))),hi=Math.ceil(Math.log10(Math.max(...ds)));const X=k=>L+(Wc-L-Rt)*k/K,Y=v=>Tp+(Hc-Tp-B)*(1-(Math.log10(v)-lo)/Math.max(1,hi-lo));
+  [lo,hi].forEach(e=>g+=`<text class="axt" x="${L-6}" y="${Tp+(Hc-Tp-B)*(1-(e-lo)/Math.max(1,hi-lo))}" text-anchor="end" dominant-baseline="central">1e${e}</text>`);
+  const st=Math.max(1,Math.floor(vi.deltas.length/400));let pts='';vi.deltas.forEach((v,i)=>{if(v>0&&(i%st===0||i===vi.deltas.length-1))pts+=`${X(i+1).toFixed(1)},${Y(v).toFixed(1)} `;});
+  g+=`<polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2"/>`;
+  if(vi.stable)g+=`<line x1="${X(vi.stable)}" y1="${Tp}" x2="${X(vi.stable)}" y2="${Hc-B}" stroke="var(--good)" stroke-dasharray="4 3"/><text class="axt" x="${X(vi.stable)+4}" y="${Tp+8}">policy final</text>`;}
+ [0,K].forEach(k=>g+=`<text class="axt" x="${L+(Wc-L-Rt)*k/K}" y="${Hc-5}" text-anchor="${k?'end':'start'}">${k?k+' sweeps':'0'}</text>`);
+ $('viChart').innerHTML=g;
+ ['viStep','viRun','viPlay'].forEach(id=>$(id).disabled=vi.done);$('viPlay').textContent=timer?'Pause':'Play';}
+function stop(){if(timer){clearInterval(timer);timer=null;}if($('viPlay'))$('viPlay').textContent='Play';}
+$('viPlay').onclick=()=>{if(timer){stop();renderVI();return;}const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;timer=setInterval(()=>{viSweep();renderVI();if(vi.done)stop();},reduce?600:220);renderVI();};
+$('viStep').onclick=()=>{stop();viSweep();renderVI();};
+$('viRun').onclick=()=>{stop();while(!vi.done)viSweep();renderVI();};
+$('viReset').onclick=viReset;
+
+// ---------- policy iteration ----------
+let pit;
+function initPolicy(kind){return KEYS.map(([x,y])=>kind==='north'?0:(x<6?1:0));}
+function piReset(){const pi=initPolicy($('piInit').value);pit={pi,V:null,phase:'eval',round:1,done:false,changed:null,nChanged:0};renderPI();}
+function piStep(){if(pit.done)return;
+ if(pit.phase==='eval'){pit.V=evalPolicy(pit.pi);pit.phase='improve';}
+ else{const np=KEYS.map((_,s)=>argmaxS(pit.V,s,pit.pi[s]));const changed=np.map((a,s)=>a!==pit.pi[s]);const n=changed.filter(Boolean).length;
+  if(!n){pit.done=true;pit.changed=null;}else{pit.pi=np;pit.changed=changed;pit.nChanged=n;pit.round++;pit.phase='eval';}}}
+function renderPI(){drawMap($('piMap'),pit.V,pit.pi,{changed:pit.phase==='eval'?pit.changed:null});
+ const mean=pit.V?pit.V.reduce((a,b)=>a+b,0)/N:null,base=pit.V?pit.V[sid(0,4,BM)]:null;
+ $('piStat').innerHTML=`<span>Round <b>${pit.round}</b></span><span>Value at base <b>${base===null?'?':base.toFixed(2)}</b></span><span>Mean value <b>${mean===null?'?':mean.toFixed(2)}</b></span>${pit.done?'<span><b>Converged</b></span>':''}`;
+ $('piMsg').textContent=pit.done?`No state wants to switch, so this policy is optimal. It took ${pit.round} evaluations.`
+  :pit.phase==='eval'?(pit.round===1?'Arrows show the starting policy. Press Evaluate to compute its exact value in every state.':`Improvement switched ${pit.nChanged} of ${N} states (outlined at this battery level). Evaluate the new policy next.`)
+  :'Values computed for the current policy. Press Improve to switch each state to its best move.';
+ $('piStep').textContent=pit.phase==='eval'?'Evaluate':'Improve';$('piStep').disabled=$('piRun').disabled=pit.done;}
+$('piStep').onclick=()=>{piStep();renderPI();};
+$('piRun').onclick=()=>{let n=0;while(!pit.done&&n++<200)piStep();renderPI();};
+$('piReset').onclick=piReset;$('piInit').onchange=piReset;
+
+// ---------- shared helpers ----------
+let seed=11,SOL=null;
+const getSol=()=>SOL||(SOL=solve());
+function rng(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const fmt=v=>(v<0?'−':'')+Math.abs(v).toFixed(2);
+const fmtP=v=>v<0?`(${fmt(v)})`:fmt(v);
+const where=(x,y)=>`column ${x+1}, row ${y+1}`;
+function lineChart(svg,{series,xmax,ymin,ymax,ref,yfmt}){
+ const Wc=460,Hc=130,L=44,Rt=10,Tp=10,B=20,X=x=>L+(Wc-L-Rt)*x/xmax,Y=y=>Tp+(Hc-Tp-B)*(1-(y-ymin)/(ymax-ymin));
+ let g=`<line class="ax" x1="${L}" y1="${Hc-B}" x2="${Wc-Rt}" y2="${Hc-B}"/><line class="ax" x1="${L}" y1="${Tp}" x2="${L}" y2="${Hc-B}"/>`;
+ [ymin,ymax].forEach(v=>g+=`<text class="axt" x="${L-6}" y="${Y(v)}" text-anchor="end" dominant-baseline="central">${yfmt(v)}</text>`);
+ if(ref){g+=`<line x1="${L}" x2="${Wc-Rt}" y1="${Y(ref.y)}" y2="${Y(ref.y)}" stroke="${ref.col}" stroke-dasharray="5 4" stroke-width="1.5"/><text class="axt" x="${Wc-Rt}" y="${Y(ref.y)<Tp+14?Y(ref.y)+12:Y(ref.y)-5}" text-anchor="end">${ref.label}</text>`;}
+ series.forEach(s=>{const p=s.pts.filter(q=>q[1]!==null&&isFinite(q[1]));if(!p.length)return;
+  g+=`<polyline points="${p.map(([x,y])=>X(x).toFixed(1)+','+Y(y).toFixed(1)).join(' ')}" fill="none" stroke="${s.col}" stroke-width="2" stroke-linejoin="round"/>`;
+  const[lx,ly]=p[p.length-1];g+=`<circle cx="${X(lx)}" cy="${Y(ly)}" r="3" fill="${s.col}"/>`;});
+ g+=`<text class="axt" x="${L}" y="${Hc-5}">0</text><text class="axt" x="${Wc-Rt}" y="${Hc-5}" text-anchor="end">${xmax.toLocaleString()} flights</text>`;
+ svg.innerHTML=g;}
+
+// ---------- Q-learning ----------
+const QC={a:.1,e:.2,decay:false,start:'base',init:0,seed:1};
+const MAXT=60;
+let Q,QV,qs=null,qAnim=null,qView='q';
+function qReset(){qStop();Q=new Float64Array(N*4).fill(QC.init);QV=new Uint32Array(N*4);
+ qs={ep:0,steps:0,cur:null,trail:[],last:null,lastOut:null,succ:[],hist:[],rand:rng(QC.seed*7919+13)};qRecord(true);renderQ();}
+const epsNow=()=>QC.decay?Math.max(.01,QC.e*Math.pow(.5,qs.ep/1000)):QC.e;
+function maxQ(s){let m=Q[s*4];for(let a=1;a<4;a++)if(Q[s*4+a]>m)m=Q[s*4+a];return m;}
+function argQ(s){let b=0;for(let a=1;a<4;a++)if(Q[s*4+a]>Q[s*4+b])b=a;return b;}
+function argQTie(s){const m=maxQ(s),c=[];for(let a=0;a<4;a++)if(Q[s*4+a]>=m-1e-12)c.push(a);return c[Math.floor(qs.rand()*c.length)];}
+const greedyQ=()=>KEYS.map((_,s)=>argQ(s));
+const stateVisits=s=>QV[s*4]+QV[s*4+1]+QV[s*4+2]+QV[s*4+3];
+function qStart(){const s=QC.start==='base'?BASE:Math.floor(qs.rand()*N);const[x,y,b]=KEYS[s];qs.cur={s,t:0};qs.trail=[[x,y,b]];qs.lastOut=null;}
+function qStep(){// one move and one Q update; returns true when the flight ends
+ if(!qs.cur)qStart();
+ const s=qs.cur.s,eps=epsNow(),explore=qs.rand()<eps,a=explore?Math.floor(qs.rand()*4):argQTie(s);
+ const outs=OUT[s][a];let u=qs.rand(),k=0;for(;k<outs.length-1;k++){if(u<outs[k][0])break;u-=outs[k][0];}
+ const[,j,r,nx,ny]=outs[k];const mx=j>=0?maxQ(j):0,target=r+(j>=0?cfg.g*mx:0),old=Q[s*4+a];
+ Q[s*4+a]=old+QC.a*(target-old);QV[s*4+a]++;qs.steps++;qs.cur.t++;
+ const nb=j>=0?KEYS[j][2]:(j===-2?0:null);
+ qs.trail.push([nx,ny,nb]);
+ let end=null;if(j===-1)end='found';else if(j===-2)end='crash';else if(qs.cur.t>=MAXT)end='timeout';
+ qs.last={s,a,explore,eps,slip:k>0,j,r,mx,target,old,nw:Q[s*4+a],nx,ny,nb,end};
+ if(end){qs.ep++;qs.succ.push(end==='found'?1:0);qs.lastOut=end;qs.cur=null;qRecord(false);return true;}
+ qs.cur.s=j;return false;}
+function qRecord(force){const e=qs.ep;
+ if(!force&&!((e<=100&&e%5===0)||(e<=1000&&e%25===0)||e%100===0))return;
+ const sol=getSol(),pi=greedyQ(),Vp=evalPolicy(pi);let ok=0;for(const s of REACH)if(qsa(sol.V,s,pi[s])>=sol.V[s]-.05)ok++;
+ const last=qs.succ.slice(-100);
+ if(qs.hist.length&&qs.hist[qs.hist.length-1].e===e)qs.hist.pop();
+ qs.hist.push({e,v:Vp[BASE],opt:ok/REACH.length,succ:last.length?last.reduce((a,b)=>a+b,0)/last.length:null});}
+function qStop(){if(qAnim){clearInterval(qAnim);qAnim=null;}if($('qEpBtn'))$('qEpBtn').textContent='Fly one flight';}
+function follow(){const t=qs.trail[qs.trail.length-1];if(!t)return;const[x,y,b]=t,c=ch(x,y);if(c==='H'||c==='B'||c==='C'||!b)return;if(b!==showB)setBatt(b);}
+function bulk(n){qStop();const goal=qs.ep+n;let guard=0;while(qs.ep<goal&&guard++<(n+1)*MAXT)qStep();qRecord(true);renderQ();renderSim();}
+
+const VIEWNOTE={q:'Each cell is split into four triangles, one per move, colored by Q(state, move): green good, red bad. The outlined triangle is the move the drone currently prefers. Hover a triangle for its exact value and how often it was tried.',
+ visits:'Darker cells were visited more often at this battery level. Grey cells have never been visited, so their Q-values are still the starting guesses.',
+ cmp:'Green: the learned move is optimal (or within 0.05 of it). Red: value iteration would choose differently. Grey: never visited at this battery level. Hover for the optimal move.'};
+function drawQMap(){const svg=$('qMap'),sol=getSol();let g='';let maxV=1;
+ if(qView==='visits')for(let s=0;s<N;s++)if(KEYS[s][2]===showB||ch(KEYS[s][0],KEYS[s][1])==='B'||ch(KEYS[s][0],KEYS[s][1])==='C')maxV=Math.max(maxV,stateVisits(s));
+ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const c=ch(x,y),X=x*CS,Y=y*CS,cx=X+CS/2,cy=Y+CS/2;
+  if(c==='#'){g+=`<rect x="${X+1}" y="${Y+1}" width="${CS-2}" height="${CS-2}" rx="5" fill="var(--cliff)"/>`;continue;}
+  if(c==='H'){g+=`<rect x="${X+1}" y="${Y+1}" width="${CS-2}" height="${CS-2}" rx="5" fill="var(--good)"/><text class="lbl" x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" style="fill:var(--surface)">H</text>`;continue;}
+  const s=sid(x,y,showB),n=stateVisits(s),ga=argQ(s);
+  if(qView==='q'){
+   const P=[[[X+1,Y+1],[X+CS-1,Y+1]],[[X+CS-1,Y+1],[X+CS-1,Y+CS-1]],[[X+CS-1,Y+CS-1],[X+1,Y+CS-1]],[[X+1,Y+CS-1],[X+1,Y+1]]];
+   const T=[[cx,Y+14,'middle'],[X+CS-4,cy+3,'end'],[cx,Y+CS-7,'middle'],[X+4,cy+3,'start']];
+   for(let a=0;a<4;a++){const q=Q[s*4+a],v=QV[s*4+a],[p1,p2]=P[a];
+    g+=`<polygon points="${p1.join(',')} ${p2.join(',')} ${cx},${cy}" fill="${Math.abs(q)<.005?'var(--cell)':heat(q)}" stroke="var(--surface)" stroke-width="1"><title>${DN[a]}: Q = ${q.toFixed(3)}, tried ${v} time${v===1?'':'s'}</title></polygon>`;}
+   if(n>0){const[p1,p2]=P[ga];g+=`<polygon points="${p1.join(',')} ${p2.join(',')} ${cx},${cy}" fill="none" stroke="var(--fg)" stroke-width="1.6" stroke-linejoin="round" pointer-events="none"/>`;}
+   for(let a=0;a<4;a++){const q=Q[s*4+a],[tx,ty,an]=T[a];g+=`<text class="qv" x="${tx}" y="${ty}" text-anchor="${an}" pointer-events="none" ${QV[s*4+a]?'':'opacity=".45"'}>${Math.abs(q)<.05?'0':q.toFixed(1)}</text>`;}
+  }else if(qView==='visits'){
+   const k=n?Math.round(12+63*Math.log10(n+1)/Math.log10(maxV+1)):0;
+   g+=`<rect x="${X+1}" y="${Y+1}" width="${CS-2}" height="${CS-2}" rx="5" fill="${n?`color-mix(in srgb, var(--learn) ${k}%, var(--surface))`:'var(--cell)'}"><title>${n} visit${n===1?'':'s'}</title></rect>`;
+   if(n)g+=arrowAt(cx,cy-10,ga);
+   g+=`<text class="cv" x="${cx}" y="${Y+CS-11}" text-anchor="middle" pointer-events="none">${n.toLocaleString()}</text>`;
+  }else{
+   const best=sol.pi[s],ok=qsa(sol.V,s,ga)>=sol.V[s]-.05;
+   g+=`<rect x="${X+1}" y="${Y+1}" width="${CS-2}" height="${CS-2}" rx="5" fill="${n?`color-mix(in srgb, var(${ok?'--good':'--bad'}) 40%, var(--surface))`:'var(--cell)'}"><title>${n?`learned: ${DN[ga]} · optimal: ${DN[best]}`:'never visited'}</title></rect>`;
+   if(n)g+=arrowAt(cx,cy-6,ga);
+   else g+=`<text class="axt" x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" pointer-events="none">–</text>`;
+  }
+  if(c==='~')g+=`<rect x="${X+1}" y="${Y+1}" width="${CS-2}" height="${CS-2}" rx="5" fill="none" stroke="var(--gust)" stroke-width="3" stroke-dasharray="5 4" pointer-events="none"/>`;
+  if(c==='B'||c==='C')g+=`<rect x="${X+1}" y="${Y+1}" width="${CS-2}" height="${CS-2}" rx="5" fill="none" stroke="var(--accent)" stroke-width="3" pointer-events="none"/><text class="lbl" x="${X+5}" y="${Y+12}" style="fill:var(--accent)" pointer-events="none">${c}</text>`;}
+ if(qs.trail.length){const pts=qs.trail.map(([x,y])=>`${x*CS+CS/2},${y*CS+CS/2}`).join(' ');
+  g+=`<polyline points="${pts}" fill="none" stroke="var(--learn)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" opacity=".85" pointer-events="none"/>`;
+  const[lx,ly,lb]=qs.trail[qs.trail.length-1],lab=qs.lastOut==='found'?'✓':qs.lastOut==='crash'?'✗':(lb??'');
+  g+=`<circle cx="${lx*CS+CS/2}" cy="${ly*CS+CS/2}" r="10" fill="var(--learn)" stroke="var(--surface)" stroke-width="2"/><text class="lbl" x="${lx*CS+CS/2}" y="${ly*CS+CS/2}" text-anchor="middle" dominant-baseline="central" style="fill:var(--surface)">${lab}</text>`;}
+ svg.innerHTML=g;}
+function renderUpd(){const L=qs.last,el=$('qUpd');
+ if(!L){el.innerHTML='<p class="small">Press Step to make the first move. Each move changes exactly one Q-value: the one for the state the drone was in and the move it chose.</p>';return;}
+ const[x,y,b]=KEYS[L.s],c0=ch(x,y);
+ const outc=L.j===-1?'reached the hiker':L.j===-2?`ran out of battery in ${where(L.nx,L.ny)}: crashed`:`landed in ${where(L.nx,L.ny)} with battery ${L.nb}${'BC'.includes(ch(L.nx,L.ny))?' (recharged)':''}`;
+ const tgt=L.j>=0?`target = r + γ · max Q(next) = ${fmt(L.r)} + ${cfg.g.toFixed(2)} × ${fmtP(L.mx)} = ${fmt(L.target)}`:`target = r = ${fmt(L.r)}   (flight over, nothing after it)`;
+ el.innerHTML=`<div><span class="k">In</span>${where(x,y)}${c0==='B'?' (base)':c0==='C'?' (charger)':''}, battery ${b}</div>
+ <div><span class="k">Chose</span><b>${DN[L.a]}</b> · ${L.explore?`random move (exploring, ε = ${L.eps.toFixed(2)})`:'highest Q-value (greedy)'}</div>
+ <div><span class="k">Wind</span>${L.slip?'pushed it sideways':'none, moved as intended'}</div>
+ <div><span class="k">Result</span>${outc}, reward r = ${fmt(L.r)}</div>
+ <div class="eq">${tgt}</div>
+ <div class="eq">Q(here, ${DN[L.a]}) ← ${fmt(L.old)} + ${QC.a.toFixed(2)} × (${fmt(L.target)} − ${fmtP(L.old)}) = ${fmt(L.nw)}</div>
+ ${L.end==='timeout'?'<div class="small">This flight hit the 60-move limit and ends here.</div>':''}`;}
+function renderQCharts(){const sol=getSol(),vs=sol.V[BASE],h=qs.hist,xmax=Math.max(10,qs.ep);
+ const vals=h.map(p=>p.v).concat([vs]);const lo=Math.floor(Math.min(...vals)),hi=Math.ceil(Math.max(...vals,0));
+ lineChart($('qChartV'),{series:[{pts:h.map(p=>[p.e,p.v]),col:'var(--learn)'}],xmax,ymin:lo,ymax:hi===lo?lo+1:hi,ref:{y:vs,col:'var(--accent)',label:`optimal ${vs.toFixed(2)}`},yfmt:v=>fmt(v).replace('.00','')});
+ lineChart($('qChartP'),{series:[{pts:h.map(p=>[p.e,p.opt]),col:'var(--good)'},{pts:h.map(p=>[p.e,p.succ]),col:'var(--learn)'}],xmax,ymin:0,ymax:1,yfmt:v=>Math.round(v*100)+'%'});}
+function renderQ(){if(!qs)return;drawQMap();renderUpd();renderQCharts();
+ const vis=KEYS.reduce((t,_,s)=>t+(stateVisits(s)>0),0),h=qs.hist[qs.hist.length-1];
+ const mid=qs.cur?` (flight ${qs.ep+1} in progress, move ${qs.cur.t})`:'';
+ $('qStat').innerHTML=`<span>Flights <b>${qs.ep.toLocaleString()}</b>${mid}</span><span>Moves <b>${qs.steps.toLocaleString()}</b></span><span>ε now <b>${epsNow().toFixed(2)}</b></span><span>States visited <b>${vis} / ${N}</b></span><span>Learned policy at base <b>${h?h.v.toFixed(2):'—'}</b> (optimal ${getSol().V[BASE].toFixed(2)})</span>`;
+ $('qViewNote').textContent=VIEWNOTE[qView];}
+$('qStepBtn').onclick=()=>{qStop();const end=qStep();if(end)qRecord(true);follow();renderQ();if(end)renderSim();};
+$('qEpBtn').onclick=()=>{if(qAnim){qStop();renderQ();return;}const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+ $('qEpBtn').textContent='Stop';qAnim=setInterval(()=>{const end=qStep();if(end)qRecord(true);follow();renderQ();if(end){qStop();renderSim();}},reduce?450:140);};
+$('q100').onclick=()=>bulk(100);$('q1000').onclick=()=>bulk(1000);
+$('qResetBtn').onclick=()=>{qReset();renderSim();};
+document.querySelectorAll('#qViews .btn').forEach(b=>b.onclick=()=>{qView=b.dataset.v;document.querySelectorAll('#qViews .btn').forEach(x=>x.setAttribute('aria-pressed',x===b?'true':'false'));renderQ();});
+$('qa').addEventListener('input',e=>{QC.a=+e.target.value;$('qav').textContent=QC.a.toFixed(2);});
+$('qe').addEventListener('input',e=>{QC.e=+e.target.value;$('qev').textContent=QC.e.toFixed(2);renderQ();});
+$('qdecay').addEventListener('change',e=>{QC.decay=e.target.checked;renderQ();});
+$('qstart').addEventListener('change',e=>{QC.start=e.target.value;});
+$('qinit').addEventListener('change',e=>{QC.init=+e.target.value;qReset();renderSim();});
+$('qseed').addEventListener('change',e=>{const v=Math.max(1,Math.round(+e.target.value||1));e.target.value=v;QC.seed=v;qReset();renderSim();});
+
+// ---------- tabs ----------
+function showTab(t){['plan','q'].forEach(k=>{$('tab-'+k).setAttribute('aria-selected',k===t?'true':'false');$('tab-'+k).tabIndex=k===t?0:-1;$('panel-'+k).hidden=k!==t;});try{localStorage.setItem('droneTab',t);}catch(e){}}
+$('tab-plan').onclick=()=>showTab('plan');$('tab-q').onclick=()=>showTab('q');
+document.querySelector('.tabs').addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowLeft'){const t=$('tab-plan').getAttribute('aria-selected')==='true'?'q':'plan';showTab(t);$('tab-'+t).focus();}});
+
+// ---------- simulation ----------
+function fly(pi,us){let x=0,y=4,b=BM;const path=[[x,y,b]];let tot=0,out='timeout';
+ for(let t=0;t<60;t++){const a=pi[sid(x,y,b)],u=us[t];const d=u<1-cfg.w?DIRS[a]:u<1-cfg.w/2?DIRS[(a+1)%4]:DIRS[(a+3)%4];
+  const[nx,ny]=move(x,y,d),c=ch(nx,ny),nb=b-(c==='~'?2:1);x=nx;y=ny;tot+=cfg.rS;
+  if(c==='H'){tot+=cfg.rF;path.push([x,y,nb]);out='found';break;}
+  if(c==='B'||c==='C'){b=BM;path.push([x,y,b]);continue;}
+  if(nb<=0){tot+=cfg.rC;path.push([x,y,0]);out='crash';break;}b=nb;path.push([x,y,b]);}
+ return{path,out,tot,steps:path.length-1};}
+function renderSim(){const sol=getSol();const naive=initPolicy('straight');const learned=qs&&qs.ep>0?greedyQ():null;const r=rng(seed);const us=[];for(let i=0;i<60;i++)us.push(r());
+ const A=fly(sol.pi,us),B=fly(naive,us),C=learned?fly(learned,us):null;
+ let sa=0,sb=0,sc=0;const r2=rng(seed*7919+3);for(let i=0;i<1000;i++){const u=[];for(let j=0;j<60;j++)u.push(r2());sa+=fly(sol.pi,u).out==='found';sb+=fly(naive,u).out==='found';if(learned)sc+=fly(learned,u).out==='found';}
+ const line=(p,col,off,dash)=>{const pts=p.map(([x,y])=>`${x*CS+CS/2+off},${y*CS+CS/2+off}`).join(' ');const[lx,ly]=p[p.length-1];return `<polyline points="${pts}" fill="none" stroke="${col}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" ${dash?'stroke-dasharray="7 5"':''}/><circle cx="${lx*CS+CS/2+off}" cy="${ly*CS+CS/2+off}" r="5" fill="${col}"/>`;};
+ drawMap($('simMap'),null,null,{extra:line(B.path,'var(--bad)',6,true)+(C?line(C.path,'var(--learn)',0,false):'')+line(A.path,'var(--accent)',-6,false)});
+ const desc=o=>o.out==='found'?`Found the hiker in ${o.steps} moves`:o.out==='crash'?`Crashed after ${o.steps} moves`:`Still flying after 60 moves`;
+ const bt=o=>o.path.map(p=>p[2]).join(' → ');
+ const card=(title,o,n)=>`<div class="kp"><h3>${title}</h3><div class="v">${desc(o)}</div><div class="small">Battery: ${bt(o)}</div><div class="small">Found the hiker in ${(n/10).toFixed(1)}% of 1,000 flights</div></div>`;
+ $('simKpi').innerHTML=card('Optimal policy',A,sa)+card('Straight at the hiker',B,sb)+(C?card(`Learned by Q-learning (${qs.ep.toLocaleString()} flights)`,C,sc):`<div class="kp"><h3>Learned by Q-learning</h3><div class="small">Not trained yet. Fly some flights on the Q-learning tab.</div></div>`);}
+$('simGo').onclick=()=>{seed=(seed*48271+17)%2147483647;renderSim();};
+
+// ---------- settings ----------
+$('battChips').innerHTML=Array.from({length:BM},(_,i)=>`<button class="btn" data-b="${i+1}" aria-pressed="false">${i+1}</button>`).join('');
+function setBatt(b){showB=b;document.querySelectorAll('#battChips .btn').forEach(x=>x.setAttribute('aria-pressed',+x.dataset.b===b?'true':'false'));renderVI();renderPI();renderQ();}
+document.querySelectorAll('#battChips .btn').forEach(x=>x.onclick=()=>setBatt(+x.dataset.b));
+function syncInputs(){$('gamma').value=cfg.g;$('gv').textContent=(+cfg.g).toFixed(2);$('wind').value=cfg.w;$('wv').textContent=(+cfg.w).toFixed(2);$('rF').value=cfg.rF;$('rC').value=cfg.rC;$('rS').value=cfg.rS;}
+function changed(){build();SOL=null;viReset();piReset();qReset();renderSim();}
+$('gamma').addEventListener('input',e=>{$('gv').textContent=(+e.target.value).toFixed(2);});
+$('gamma').addEventListener('change',e=>{cfg.g=+e.target.value;changed();});
+$('wind').addEventListener('input',e=>{$('wv').textContent=(+e.target.value).toFixed(2);});
+$('wind').addEventListener('change',e=>{cfg.w=+e.target.value;changed();});
+document.querySelectorAll('[data-g]').forEach(b=>b.onclick=()=>{cfg.g=+b.dataset.g;syncInputs();changed();});
+['rF','rC','rS'].forEach(k=>$(k).addEventListener('input',e=>{const v=parseFloat(e.target.value);if(isNaN(v))return;cfg[k]=v;changed();}));
+$('resetAll').onclick=()=>{cfg={...D};syncInputs();changed();};
+syncInputs();build();showB=4;changed();setBatt(4);
+let t0='plan';try{t0=localStorage.getItem('droneTab')||'plan';}catch(e){}showTab(t0==='q'?'q':'plan');
+})();
+</script>
+
+</body></html>
